@@ -34,17 +34,51 @@ CHECKPOINTS_DIR = Path("checkpoints")
 LORAS_DIR = Path("loras")
 
 
-CHECKPOINT_REGISTRY = {
-    "default": {
-        "name": "Animagine XL 4.0 (HuggingFace)",
-        "path": None,
-        "description": "Default anime model from HuggingFace",
-    },
-}
+def _discover_checkpoints() -> dict:
+    """Dynamically discover available checkpoints in checkpoints/ folder."""
+    registry = {
+        "default": {
+            "name": "Animagine XL 4.0 (HuggingFace)",
+            "path": None,
+            "description": "Default anime model from HuggingFace",
+        },
+    }
+
+    if CHECKPOINTS_DIR.exists():
+        for file in CHECKPOINTS_DIR.glob("*.safetensors"):
+            if file.name not in registry:
+                registry[file.name] = {
+                    "name": file.stem,
+                    "path": str(file),
+                    "description": f"Custom checkpoint: {file.name}",
+                }
+
+    return registry
 
 
-LORA_REGISTRY = {
-}
+def _discover_loras() -> dict:
+    """Dynamically discover available LoRAs in loras/ folder."""
+    registry = {}
+
+    if LORAS_DIR.exists():
+        for file in LORAS_DIR.glob("*.safetensors"):
+            registry[file.name] = {
+                "name": file.stem,
+                "path": str(file),
+                "description": f"LoRA: {file.name}",
+            }
+
+    return registry
+
+
+def get_checkpoint_registry() -> dict:
+    """Get current checkpoint registry (dynamically discovered)."""
+    return _discover_checkpoints()
+
+
+def get_lora_registry() -> dict:
+    """Get current LoRA registry (dynamically discovered)."""
+    return _discover_loras()
 
 
 class AnimaginePipeline:
@@ -81,8 +115,11 @@ class AnimaginePipeline:
 
     def list_available_models(self) -> dict:
         """Scan directories and return available models."""
+        checkpoint_registry = get_checkpoint_registry()
+        lora_registry = get_lora_registry()
+
         checkpoints = []
-        for filename, info in CHECKPOINT_REGISTRY.items():
+        for filename, info in checkpoint_registry.items():
             if filename == "default":
                 checkpoints.append({
                     "name": info["name"],
@@ -102,7 +139,7 @@ class AnimaginePipeline:
                     })
 
         loras = []
-        for filename, info in LORA_REGISTRY.items():
+        for filename, info in lora_registry.items():
             path = LORAS_DIR / filename
             if path.exists():
                 size_mb = path.stat().st_size / (1024 * 1024)
@@ -138,7 +175,8 @@ class AnimaginePipeline:
         """Load checkpoint from local safetensors file."""
         from diffusers import StableDiffusionXLPipeline
 
-        info = CHECKPOINT_REGISTRY.get(checkpoint)
+        checkpoint_registry = get_checkpoint_registry()
+        info = checkpoint_registry.get(checkpoint)
         if not info or not info.get("path"):
             raise FileNotFoundError(f"Checkpoint not in registry: {checkpoint}")
 
@@ -224,15 +262,13 @@ class AnimaginePipeline:
             filename: LoRA filename from loras/ folder
             scale: LoRA strength (0.0-2.0, default 1.0)
 
-        Returns:
-            Status dict with success, loaded LoRA info, and LCM guidance if applicable
+        Returns:message
         """
         if self._pipe is None:
             return {
                 "success": False,
                 "lora_loaded": None,
                 "scale": scale,
-                "is_lcm": False,
                 "message": "No checkpoint loaded. Call load_checkpoint first.",
             }
 
@@ -242,7 +278,6 @@ class AnimaginePipeline:
                 "success": False,
                 "lora_loaded": None,
                 "scale": scale,
-                "is_lcm": False,
                 "message": f"LoRA not found: {filename}",
             }
 
@@ -261,22 +296,17 @@ class AnimaginePipeline:
             if len(self._loaded_loras) == 1:
                 self._pipe.fuse_lora(lora_scale=scale)
 
-
-            info = LORA_REGISTRY.get(filename, {})
-            is_lcm = info.get("is_lcm", False)
-
             return {
                 "success": True,
                 "lora_loaded": filename,
                 "scale": scale,
-                "is_lcm": is_lcm,
-                "message": "With LCM LoRA, use 4-8 steps for best results" if is_lcm else f"Loaded {filename}",
+                "message": f"Loaded {filename}",
             }
         except Exception as e:
             return {
                 "success": False,
                 "lora_loaded": None,
-                "scale": scale,
+                "scale": scal,
                 "is_lcm": False,
                 "message": f"Failed to load LoRA: {str(e)}",
             }
