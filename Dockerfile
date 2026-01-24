@@ -38,7 +38,7 @@ COPY pyproject.toml ./
 # Install dependencies (this layer caches if pyproject.toml doesn't change)
 RUN pip install --no-cache-dir \
     torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 && \
-    pip install --no-cache-dir -e . --no-deps
+    pip install --no-cache-dir -e .
 
 # Now copy source and other files (won't invalidate dependency cache if only source changes)
 COPY src ./src
