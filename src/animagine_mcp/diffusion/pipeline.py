@@ -91,6 +91,30 @@ class AnimaginePipeline:
         self._loaded_checkpoint: str | None = None
         self._loaded_loras: list[LoRAConfig] = []
 
+    def _get_detected_render_type(self) -> str:
+        """Detect the current render type (gpu or cpu)."""
+        return "gpu" if torch.cuda.is_available() else "cpu"
+
+    def _validate_render_type(self, specified_render_type: str | None) -> tuple[bool, str]:
+        """Validate that specified render type matches detected render type.
+
+        Returns:
+            Tuple of (is_valid, detected_render_type)
+        """
+        if specified_render_type is None:
+            return True, self._get_detected_render_type()
+
+        detected = self._get_detected_render_type()
+        specified = specified_render_type.lower()
+
+        if specified not in ("gpu", "cpu"):
+            return False, detected
+
+        if specified != detected:
+            return False, detected
+
+        return True, detected
+
     @property
     def device(self) -> str:
         """Get the device to use for generation."""
@@ -379,6 +403,7 @@ class AnimaginePipeline:
         steps: int = DEFAULT_STEPS,
         guidance_scale: float = DEFAULT_GUIDANCE,
         seed: int | None = None,
+        render_type: str | None = None,
     ) -> GenerateImageOutput:
         """Generate an image with Animagine XL 4.0.
 
@@ -392,10 +417,22 @@ class AnimaginePipeline:
             steps: Inference steps (default 28, use 4-8 with LCM)
             guidance_scale: Classifier-free guidance scale (default 5.0)
             seed: Random seed for reproducibility (random if None)
+            render_type: Optional render type validation ('gpu' or 'cpu'). If specified and doesn't match detected device, raises error.
 
         Returns:
             GenerateImageOutput with image path and metadata
+
+        Raises:
+            ValueError: If render_type is specified but doesn't match detected device
         """
+        # Validate render type
+        is_valid, detected_render_type = self._validate_render_type(render_type)
+        if not is_valid:
+            raise ValueError(
+                f"Render type mismatch: specified '{render_type}' but detected '{detected_render_type}'. "
+                f"Aborting render to prevent slow processing. "
+                f"Please ensure your environment has the required hardware (GPU/CPU) or remove the render_type parameter."
+            )
 
         target_checkpoint = checkpoint or self._loaded_checkpoint or "default"
         if self._loaded_checkpoint != target_checkpoint or self._pipe is None:
@@ -454,6 +491,7 @@ class AnimaginePipeline:
             pipeline=CUSTOM_PIPELINE,
             checkpoint=self._loaded_checkpoint or "default",
             loras=lora_configs,
+            render_type=detected_render_type,
         )
 
 
@@ -519,6 +557,7 @@ class AnimaginePipeline:
         steps: int = DEFAULT_STEPS,
         guidance_scale: float = DEFAULT_GUIDANCE,
         seed: int | None = None,
+        render_type: str | None = None,
     ) -> GenerateImageOutput:
         """Generate an image using img2img (image-to-image) transformation.
 
@@ -534,10 +573,22 @@ class AnimaginePipeline:
             steps: Inference steps (default 28, use 4-8 with LCM)
             guidance_scale: Classifier-free guidance scale (default 5.0)
             seed: Random seed for reproducibility (random if None)
+            render_type: Optional render type validation ('gpu' or 'cpu'). If specified and doesn't match detected device, raises error.
 
         Returns:
             GenerateImageOutput with image path and metadata
+
+        Raises:
+            ValueError: If render_type is specified but doesn't match detected device
         """
+        # Validate render type
+        is_valid, detected_render_type = self._validate_render_type(render_type)
+        if not is_valid:
+            raise ValueError(
+                f"Render type mismatch: specified '{render_type}' but detected '{detected_render_type}'. "
+                f"Aborting render to prevent slow processing. "
+                f"Please ensure your environment has the required hardware (GPU/CPU) or remove the render_type parameter."
+            )
 
         target_checkpoint = checkpoint or self._loaded_checkpoint or "default"
         if self._loaded_checkpoint != target_checkpoint or self._pipe is None:
@@ -600,6 +651,7 @@ class AnimaginePipeline:
             steps=steps,
             guidance_scale=guidance_scale,
             model_id=MODEL_ID,
+            render_type=detected_render_type,
             pipeline="img2img",
             checkpoint=self._loaded_checkpoint or "default",
             loras=lora_configs,

@@ -175,6 +175,7 @@ def generate_image(
     steps: int = 28,
     guidance_scale: float = 5.0,
     seed: int | None = None,
+    render_type: str | None = None,
 ) -> dict:
     """Generate an image with Animagine XL 4.0.
 
@@ -203,6 +204,7 @@ def generate_image(
         steps: Inference steps (default 28, use 4-8 with LCM LoRA)
         guidance_scale: CFG scale (default 5.0, use 1.5 with LCM LoRA)
         seed: Random seed for reproducibility (random if not set)
+        render_type: Optional render type specification ('gpu' or 'cpu'). If specified and doesn't match detected device, renders are aborted to prevent slow processing.
 
     Returns:
         Image path, final prompts used, and generation metadata including
@@ -229,6 +231,7 @@ def generate_image(
         steps=steps,
         guidance_scale=guidance_scale,
         seed=seed,
+        render_type=render_type,
     )
     return result.model_dump()
 
@@ -245,6 +248,7 @@ def generate_image_from_image(
     steps: int = 28,
     guidance_scale: float = 5.0,
     seed: int | None = None,
+    render_type: str | None = None,
 ) -> dict:
     """Generate an image using img2img (image-to-image) transformation.
 
@@ -272,6 +276,7 @@ def generate_image_from_image(
         steps: Inference steps (default 28, use 4-8 with LCM LoRA)
         guidance_scale: CFG scale (default 5.0)
         seed: Random seed for reproducibility (random if not set)
+        render_type: Optional render type specification ('gpu' or 'cpu'). If specified and doesn't match detected device, renders are aborted to prevent slow processing.
 
     Returns:
         Image path, final prompts used, and generation metadata including
@@ -298,6 +303,7 @@ def generate_image_from_image(
         steps=steps,
         guidance_scale=guidance_scale,
         seed=seed,
+        render_type=render_type,
     )
     return result.model_dump()
 

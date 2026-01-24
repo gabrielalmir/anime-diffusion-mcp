@@ -6,6 +6,13 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class RenderType(StrEnum):
+    """Supported render types."""
+
+    GPU = "gpu"
+    CPU = "cpu"
+
+
 class Severity(StrEnum):
     """Issue severity levels."""
 
@@ -75,7 +82,8 @@ class ImageMetadata(BaseModel):
     pipeline: str = "lpw_stable_diffusion_xl"
     checkpoint: str = Field(default="default", description="Checkpoint used")
     loras: list[LoRAConfig] = Field(default_factory=list, description="LoRAs applied")
-                    
+    render_type: str = Field(default="gpu", description="Render type used (gpu or cpu)")
+
     source_image: str | None = Field(default=None, description="Source image path for img2img")
     strength: float | None = Field(default=None, description="Denoising strength for img2img (0.0-1.0)")
 
