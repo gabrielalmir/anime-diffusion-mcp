@@ -1,0 +1,87 @@
+# Prompt Taxonomy & Ontology — Animagine (SDXL)
+# Fonte de verdade para categorias de tags.
+# Observação: lista não-exaustiva; expandir conforme necessidade.
+
+gender_quantity:
+  required: true
+  examples:
+    - 1girl
+    - 2girls
+    - 1boy
+    - 1girl, 1boy
+
+rating:
+  required: false
+  examples:
+    - safe
+    - sensitive
+
+character:
+  required: false
+  fields:
+    - name
+    - variant
+    - costume
+  examples:
+    - arima kana
+    - remilia scarlet
+    - hoshimachi suisei
+    - hoshimachi suisei (1st costume)
+
+series_origin:
+  required: false
+  examples:
+    - oshi no ko
+    - touhou
+
+composition:
+  required: true
+  examples:
+    - looking at viewer
+    - solo
+    - dutch angle
+    - upper body
+    - depth of field
+
+expression_pose:
+  required: false
+  examples:
+    - smile
+    - open mouth
+    - one eye closed
+    - hands up
+    - v
+
+appearance_clothing:
+  required: false
+  examples:
+    - long sleeves
+    - frills
+    - ribbon
+    - hat
+    - red eyes
+
+environment:
+  required: true
+  examples:
+    - indoors
+    - outdoors
+    - night
+    - window
+    - light particles
+
+style_technique:
+  required: false
+  examples:
+    - anime coloring
+    - cinematic lighting
+    - soft shading
+
+quality:
+  required: true
+  must_be_last: true
+  examples:
+    - masterpiece
+    - high score
+    - great score
+    - absurdres

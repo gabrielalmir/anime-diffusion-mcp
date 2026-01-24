@@ -1,0 +1,100 @@
+# High-performance GPU configuration for Animagine MCP
+# This compose file includes advanced GPU optimizations
+
+services:
+  animagine-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: animagine-mcp-server
+    runtime: nvidia
+
+    # Ports
+    ports:
+      - "8000:8000"
+
+    # GPU Support (NVIDIA) - Multiple GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            # For single GPU (most common)
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+            # For multi-GPU setups, add more entries:
+            # - driver: nvidia
+            #   device_ids: ['1']
+            #   capabilities: [gpu]
+
+    # Volumes
+    volumes:
+      # Persist model checkpoints
+      - ./checkpoints:/app/checkpoints:rw
+      # Persist LoRA models
+      - ./loras:/app/loras:rw
+      # Persist generated outputs
+      - ./outputs:/app/outputs:rw
+      # Cache for Hugging Face models (persistent across restarts)
+      - hf_cache:/root/.cache/huggingface
+      # Cache for torch models (persistent across restarts)
+      - torch_cache:/root/.cache/torch
+
+    # Environment variables - GPU Optimized
+    environment:
+      # Python settings
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+
+      # Hugging Face settings
+      HF_HOME: /root/.cache/huggingface
+      TORCH_HOME: /root/.cache/torch
+
+      # CUDA Configuration
+      CUDA_VISIBLE_DEVICES: "0"  # Change to "0,1,2" for multi-GPU
+      CUDA_LAUNCH_BLOCKING: "1"
+      CUDA_DEVICE_ORDER: "PCI_BUS_ID"
+      TORCH_CUDA_ARCH_LIST: "7.0,7.5,8.0,8.6,8.9,9.0"
+
+      # NVIDIA Driver Configuration
+      NVIDIA_VISIBLE_DEVICES: "all"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,utility"
+
+      # PyTorch Optimization
+      TORCH_CUDNN_BENCHMARK: "1"      # Enable cuDNN auto-tuner
+      TORCH_CUDNN_DETERMINISTIC: "0"  # Allow non-deterministic for speed
+      TORCH_CUDA_DEVICE_BATCH_SORT_BACKEND: "nccl"
+      OMP_NUM_THREADS: "8"             # Adjust based on CPU cores
+
+      # Memory Optimization
+      PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
+
+      # Optional: Disable telemetry
+      HF_HUB_DISABLE_TELEMETRY: "1"
+
+      # Optional: Skip model verification on startup (model is pre-downloaded in image)
+      # SKIP_MODEL_DOWNLOAD: "true"
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Enhanced healthcheck - verifies GPU functionality
+    healthcheck:
+      test: ["CMD", "python", "-c", "import torch; import sys; print('=== GPU Status ==='); print(f'CUDA Available: {torch.cuda.is_available()}'); print(f'GPU Count: {torch.cuda.device_count()}'); print(f'Current Device: {torch.cuda.current_device()}'); print(f'GPU Name: {torch.cuda.get_device_name()}'); sys.exit(0 if torch.cuda.is_available() else 1)"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  hf_cache:
+    driver: local
+  torch_cache:
+    driver: local

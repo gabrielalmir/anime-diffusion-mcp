@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "animagine": {
+      "command": "animagine-mcp",
+      "env": {
+        "CUDA_VISIBLE_DEVICES": "0"
+      }
+    }
+  }
+}
