@@ -6,7 +6,7 @@ FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04 as builder
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# Install Python 3.11 and build dependencies
+# Install Python 3.11 and build dependencies in single layer for better caching
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
     tzdata \
@@ -18,7 +18,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.11-venv \
     python3.11-dev \
     python3-pip \
-    git \
     build-essential \
     libssl-dev \
     libffi-dev \
@@ -28,23 +27,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 
-# Upgrade pip for Python 3.11
-RUN python -m ensurepip --upgrade && \
-    python -m pip install --upgrade pip setuptools wheel
+# Upgrade pip - cache this layer
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
 
 WORKDIR /app
 
-# Copy project files
-COPY pyproject.toml README.md LICENSE ./
-COPY src ./src
+# Copy only pyproject.toml first for better caching of dependencies
+COPY pyproject.toml ./
 
-# Install Python dependencies with GPU support
+# Install dependencies (this layer caches if pyproject.toml doesn't change)
 RUN pip install --no-cache-dir \
     torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 && \
-    pip install --no-cache-dir -e .
+    pip install --no-cache-dir -e . --no-deps
 
-# Pre-download Animagine XL 4.0 model to cache
-RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('cagliostrolab/animagine-xl-4.0', cache_dir='/root/.cache/huggingface')"
+# Now copy source and other files (won't invalidate dependency cache if only source changes)
+COPY src ./src
+COPY README.md LICENSE ./
 
 # Stage 2: Runtime with CUDA support
 FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
@@ -53,7 +51,7 @@ FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# Install Python 3.11 runtime dependencies
+# Install Python 3.11 runtime dependencies only (no build tools)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
     tzdata \
@@ -73,18 +71,15 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 &
 # Set working directory
 WORKDIR /app
 
-# Copy installed packages from builder
+# Copy installed packages from builder (lightweight - no models)
 COPY --from=builder /usr/local/lib/python3.11/dist-packages /usr/local/lib/python3.11/dist-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Copy pre-downloaded model cache from builder
-COPY --from=builder /root/.cache/huggingface /root/.cache/huggingface
 
 # Copy project files
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 
-# Create directories for models, outputs, and LoRAs
+# Create directories for models and outputs
 RUN mkdir -p /app/checkpoints /app/loras /app/outputs
 
 # Copy entrypoint script

@@ -3,6 +3,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Enable BuildKit for faster, parallel builds
+      args:
+        - BUILDKIT_INLINE_CACHE=1
     container_name: animagine-mcp-server
     runtime: nvidia
 
@@ -54,9 +57,6 @@ services:
 
       # Optional: Disable telemetry
       HF_HUB_DISABLE_TELEMETRY: "1"
-
-      # Optional: Skip model verification on startup (model is pre-downloaded in image)
-      SKIP_MODEL_DOWNLOAD: "true"
 
     # Restart policy
     restart: unless-stopped

@@ -6,6 +6,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Enable BuildKit for faster, parallel builds
+      args:
+        - BUILDKIT_INLINE_CACHE=1
     container_name: animagine-mcp-server
 
     # Ports
