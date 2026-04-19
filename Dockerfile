@@ -86,10 +86,9 @@ RUN mkdir -p /app/checkpoints /app/loras /app/outputs
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Set environment variables for GPU acceleration
+# Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
-ENV CUDA_VISIBLE_DEVICES=0
 ENV CUDA_LAUNCH_BLOCKING=1
 ENV TORCH_CUDA_ARCH_LIST=7.0,7.5,8.0,8.6,8.9,9.0
 ENV NVIDIA_VISIBLE_DEVICES=all
@@ -100,9 +99,9 @@ ENV TORCH_HOME=/root/.cache/torch
 # Expose port for MCP server
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import torch; assert torch.cuda.is_available()" || exit 1
+# Health check — verifies server is listening on port 8000 (GPU-independent)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD python -c "import socket; s=socket.socket(); s.settimeout(5); s.connect(('localhost',8000)); s.close()" || exit 1
 
 # Use entrypoint to ensure directories exist
 ENTRYPOINT ["docker-entrypoint.sh"]

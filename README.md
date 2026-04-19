@@ -150,7 +150,12 @@ Checking GPU status...
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SKIP_MODEL_DOWNLOAD` | Skip model verification on startup | `false` |
+| `SKIP_MODEL_DOWNLOAD` | Skip model download/verification on startup | `false` |
+| `MODEL_ID` | HuggingFace model ID to use | `cagliostrolab/animagine-xl-4.0` |
+| `HF_TOKEN` | HuggingFace token (required for gated models) | _(unset)_ |
+| `CUDA_VISIBLE_DEVICES` | GPU device selection (e.g. `"0"`, `"0,1"`) | `"0"` |
+
+> See [DOCKER.md](DOCKER.md) for full configuration reference and [DOCKER_MCP_CONNECTION.md](DOCKER_MCP_CONNECTION.md) for connecting MCP clients to the Docker container.
 
 ---
 

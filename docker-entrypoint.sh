@@ -32,7 +32,7 @@ echo "  ✓ /root/.cache/torch"
 # -----------------------------------------------------------------------------
 # 2. Verify/download Animagine XL 4.0 model
 # -----------------------------------------------------------------------------
-MODEL_ID="cagliostrolab/animagine-xl-4.0"
+MODEL_ID="${MODEL_ID:-cagliostrolab/animagine-xl-4.0}"
 SKIP_MODEL_DOWNLOAD="${SKIP_MODEL_DOWNLOAD:-false}"
 
 if [ "$SKIP_MODEL_DOWNLOAD" = "true" ]; then
@@ -67,14 +67,17 @@ fi
 echo "Checking GPU status..."
 
 python -c "
-import torch
-if torch.cuda.is_available():
-    print(f'  ✓ GPU Available: {torch.cuda.get_device_name(0)}')
-    print(f'  ✓ CUDA Version: {torch.version.cuda}')
-    print(f'  ✓ GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f}GB')
-else:
-    print('  ⚠ No GPU detected - running in CPU mode (slower)')
-"
+try:
+    import torch
+    if torch.cuda.is_available():
+        print(f'  ✓ GPU Available: {torch.cuda.get_device_name(0)}')
+        print(f'  ✓ CUDA Version: {torch.version.cuda}')
+        print(f'  ✓ GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f}GB')
+    else:
+        print('  ⚠ No GPU detected - running in CPU mode (slower)')
+except Exception as e:
+    print(f'  ⚠ GPU check skipped: {e}')
+" || true
 
 # -----------------------------------------------------------------------------
 # 4. Start the application

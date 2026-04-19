@@ -68,13 +68,13 @@ services:
         max-size: "10m"
         max-file: "3"
 
-    # Healthcheck - verifies GPU is available
+    # Healthcheck - verifies server is listening on port 8000 (GPU-independent)
     healthcheck:
-      test: ["CMD", "python", "-c", "import torch; print(f'GPU Available: {torch.cuda.is_available()}'); print(f'GPU Count: {torch.cuda.device_count()}')"]
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(5); s.connect(('localhost',8000)); s.close()"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 90s
 
 volumes:
   hf_cache:

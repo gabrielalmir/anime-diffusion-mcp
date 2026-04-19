@@ -174,11 +174,19 @@ docker-compose exec animagine-mcp /bin/bash
 
 ### Environment Variables
 
-Edit `docker-compose.yml` to customize:
+Edit `docker-compose.yml` to customize, or pass via `docker-compose run -e VAR=value`:
 
-- `HF_HOME`: Hugging Face cache location
-- `TORCH_HOME`: PyTorch cache location
-- `CUDA_VISIBLE_DEVICES`: GPU device selection (GPU version only)
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SKIP_MODEL_DOWNLOAD` | Skip model download/verification on startup | `false` |
+| `MODEL_ID` | HuggingFace model ID to download | `cagliostrolab/animagine-xl-4.0` |
+| `HF_TOKEN` | HuggingFace access token (required for gated models) | _(unset)_ |
+| `HF_HOME` | Hugging Face cache location | `/root/.cache/huggingface` |
+| `TORCH_HOME` | PyTorch cache location | `/root/.cache/torch` |
+| `CUDA_VISIBLE_DEVICES` | GPU device selection (e.g. `"0"`, `"0,1"`) | `"0"` |
+| `PYTORCH_CUDA_ALLOC_CONF` | VRAM allocation strategy | `max_split_size_mb:512` |
+
+> **Tip**: Set `SKIP_MODEL_DOWNLOAD=true` to skip the ~6GB download if the model is already cached in the mounted volume.
 
 ### Resource Limits
 
