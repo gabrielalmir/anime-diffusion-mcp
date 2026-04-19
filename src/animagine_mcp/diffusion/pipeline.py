@@ -286,7 +286,8 @@ class AnimaginePipeline:
             filename: LoRA filename from loras/ folder
             scale: LoRA strength (0.0-2.0, default 1.0)
 
-        Returns:message
+        Returns:
+            Status dict with success, lora_loaded, scale, and message
         """
         if self._pipe is None:
             return {
@@ -330,8 +331,7 @@ class AnimaginePipeline:
             return {
                 "success": False,
                 "lora_loaded": None,
-                "scale": scal,
-                "is_lcm": False,
+                "scale": scale,
                 "message": f"Failed to load LoRA: {str(e)}",
             }
 
@@ -353,8 +353,14 @@ class AnimaginePipeline:
             try:
                 self._pipe.unfuse_lora()
                 self._pipe.unload_lora_weights()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Error unloading LoRAs: {str(e)}")
+                self._loaded_loras = []
+                return {
+                    "success": False,
+                    "unloaded_count": 0,
+                    "message": f"Failed to unload LoRAs: {str(e)}",
+                }
             self._loaded_loras = []
 
         return {

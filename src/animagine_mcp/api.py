@@ -251,6 +251,11 @@ async def generate_image(request: GenerateImageRequest) -> GenerateImageOutput:
         lora_configs = None
         if request.loras:
             scales = request.lora_scales or [1.0] * len(request.loras)
+            if len(scales) != len(request.loras):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"lora_scales length ({len(scales)}) must match loras length ({len(request.loras)})",
+                )
             lora_configs = [
                 {"filename": lora, "scale": scale}
                 for lora, scale in zip(request.loras, scales)
@@ -292,6 +297,11 @@ async def generate_image_from_image(request: GenerateImageFromImageRequest) -> G
         lora_configs = None
         if request.loras:
             scales = request.lora_scales or [1.0] * len(request.loras)
+            if len(scales) != len(request.loras):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"lora_scales length ({len(scales)}) must match loras length ({len(request.loras)})",
+                )
             lora_configs = [
                 {"filename": lora, "scale": scale}
                 for lora, scale in zip(request.loras, scales)

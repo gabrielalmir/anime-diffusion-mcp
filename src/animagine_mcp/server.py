@@ -216,6 +216,8 @@ def generate_image(
     lora_configs = None
     if loras:
         scales = lora_scales or [1.0] * len(loras)
+        if len(scales) != len(loras):
+            raise ValueError(f"lora_scales length ({len(scales)}) must match loras length ({len(loras)})")
         lora_configs = [
             {"filename": lora, "scale": scale}
             for lora, scale in zip(loras, scales)
@@ -288,6 +290,8 @@ def generate_image_from_image(
     lora_configs = None
     if loras:
         scales = lora_scales or [1.0] * len(loras)
+        if len(scales) != len(loras):
+            raise ValueError(f"lora_scales length ({len(scales)}) must match loras length ({len(loras)})")
         lora_configs = [
             {"filename": lora, "scale": scale}
             for lora, scale in zip(loras, scales)
