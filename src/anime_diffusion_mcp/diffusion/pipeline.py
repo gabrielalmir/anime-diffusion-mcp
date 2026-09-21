@@ -1,6 +1,7 @@
 """Diffusers pipeline wrapper for Animagine XL 4.0 with checkpoint and LoRA support."""
 
 import json
+import logging
 import random
 from datetime import datetime
 from pathlib import Path
@@ -9,8 +10,8 @@ import torch
 from PIL import Image
 
 from ..contracts import GenerateImageOutput, ImageMetadata, LoRAConfig
-from ..contracts.errors import ErrorCode
 
+logger = logging.getLogger(__name__)
 
 
 MODEL_ID = "cagliostrolab/animagine-xl-4.0"
@@ -71,17 +72,7 @@ def _discover_loras() -> dict:
     return registry
 
 
-def get_checkpoint_registry() -> dict:
-    """Get current checkpoint registry (dynamically discovered)."""
-    return _discover_checkpoints()
-
-
-def get_lora_registry() -> dict:
-    """Get current LoRA registry (dynamically discovered)."""
-    return _discover_loras()
-
-
-class AnimaginePipeline:
+class ImagePipeline:
     """Wrapper for the Animagine XL 4.0 Diffusers pipeline with checkpoint/LoRA support."""
 
     def __init__(self, output_dir: str | Path = "outputs"):
@@ -90,6 +81,8 @@ class AnimaginePipeline:
         self.output_dir = Path(output_dir)
         self._loaded_checkpoint: str | None = None
         self._loaded_loras: list[LoRAConfig] = []
+
+    # ------------------------------------------------------------------ device
 
     def _get_detected_render_type(self) -> str:
         """Detect the current render type (gpu or cpu)."""
@@ -101,16 +94,12 @@ class AnimaginePipeline:
         Returns:
             Tuple of (is_valid, detected_render_type)
         """
-        if specified_render_type is None:
-            return True, self._get_detected_render_type()
-
         detected = self._get_detected_render_type()
+        if specified_render_type is None:
+            return True, detected
+
         specified = specified_render_type.lower()
-
-        if specified not in ("gpu", "cpu"):
-            return False, detected
-
-        if specified != detected:
+        if specified not in ("gpu", "cpu") or specified != detected:
             return False, detected
 
         return True, detected
@@ -129,48 +118,42 @@ class AnimaginePipeline:
 
     @property
     def loaded_checkpoint(self) -> str | None:
-        """Get currently loaded checkpoint name."""
+        """Get the currently loaded checkpoint name."""
         return self._loaded_checkpoint
 
     @property
     def loaded_loras(self) -> list[LoRAConfig]:
-        """Get list of currently loaded LoRAs."""
+        """Get the currently loaded LoRAs."""
         return self._loaded_loras.copy()
 
-    def list_available_models(self) -> dict:
-        """Scan directories and return available models."""
-        checkpoint_registry = get_checkpoint_registry()
-        lora_registry = get_lora_registry()
+    # ------------------------------------------------------------------ models
 
+    def list_available_models(self) -> dict:
+        """List all available checkpoints and LoRAs with metadata."""
         checkpoints = []
-        for filename, info in checkpoint_registry.items():
-            if filename == "default":
-                checkpoints.append({
-                    "name": info["name"],
-                    "filename": filename,
-                    "size_mb": 0,
-                    "description": info["description"],
-                })
+        for filename, info in _discover_checkpoints().items():
+            if info["path"] is None:
+                size_mb = 0
             else:
                 path = Path(info["path"])
-                if path.exists():
-                    size_mb = path.stat().st_size / (1024 * 1024)
-                    checkpoints.append({
-                        "name": info["name"],
-                        "filename": filename,
-                        "size_mb": round(size_mb, 1),
-                        "description": info["description"],
-                    })
+                if not path.exists():
+                    continue
+                size_mb = round(path.stat().st_size / (1024 * 1024), 1)
+            checkpoints.append({
+                "name": info["name"],
+                "filename": filename,
+                "size_mb": size_mb,
+                "description": info["description"],
+            })
 
         loras = []
-        for filename, info in lora_registry.items():
+        for filename, info in _discover_loras().items():
             path = LORAS_DIR / filename
             if path.exists():
-                size_mb = path.stat().st_size / (1024 * 1024)
                 loras.append({
                     "name": info["name"],
                     "filename": filename,
-                    "size_mb": round(size_mb, 1),
+                    "size_mb": round(path.stat().st_size / (1024 * 1024), 1),
                     "description": info["description"],
                 })
 
@@ -199,8 +182,7 @@ class AnimaginePipeline:
         """Load checkpoint from local safetensors file."""
         from diffusers import StableDiffusionXLPipeline
 
-        checkpoint_registry = get_checkpoint_registry()
-        info = checkpoint_registry.get(checkpoint)
+        info = _discover_checkpoints().get(checkpoint)
         if not info or not info.get("path"):
             raise FileNotFoundError(f"Checkpoint not in registry: {checkpoint}")
 
@@ -232,19 +214,12 @@ class AnimaginePipeline:
             checkpoint: Filename from checkpoints/ folder, or 'default' for HuggingFace model
 
         Returns:
-            Status dict with success, loaded checkpoint name, VRAM estimate, and message
+            Status dict with success, loaded checkpoint name and message
         """
         checkpoint = checkpoint or "default"
 
-
         if self._loaded_checkpoint == checkpoint and self._pipe is not None:
-            return {
-                "success": True,
-                "checkpoint_loaded": checkpoint,
-                "vram_estimate_gb": 6.5,
-                "message": "Checkpoint already loaded",
-            }
-
+            return {"success": True, "checkpoint_loaded": checkpoint, "message": "Checkpoint already loaded"}
 
         if self._pipe is not None:
             self._unload_pipeline()
@@ -254,138 +229,87 @@ class AnimaginePipeline:
                 self._load_from_huggingface()
             else:
                 self._load_from_file(checkpoint)
-
-            self._loaded_checkpoint = checkpoint
-            self._loaded_loras = []
-
-            return {
-                "success": True,
-                "checkpoint_loaded": checkpoint,
-                "vram_estimate_gb": 6.5,
-                "message": f"Successfully loaded {checkpoint}",
-            }
-        except FileNotFoundError as e:
-            return {
-                "success": False,
-                "checkpoint_loaded": None,
-                "vram_estimate_gb": 0,
-                "message": str(e),
-            }
         except Exception as e:
-            return {
-                "success": False,
-                "checkpoint_loaded": None,
-                "vram_estimate_gb": 0,
-                "message": f"Failed to load checkpoint: {str(e)}",
-            }
+            return {"success": False, "checkpoint_loaded": None, "message": f"Failed to load checkpoint: {e}"}
 
-    def load_lora(self, filename: str, scale: float = 1.0) -> dict:
-        """Load and apply a LoRA.
+        self._loaded_checkpoint = checkpoint
+        self._loaded_loras = []
+        return {"success": True, "checkpoint_loaded": checkpoint, "message": f"Successfully loaded {checkpoint}"}
 
-        Args:
-            filename: LoRA filename from loras/ folder
-            scale: LoRA strength (0.0-2.0, default 1.0)
+    # ------------------------------------------------------------------- LoRAs
 
-        Returns:
-            Status dict with success, lora_loaded, scale, and message
+    def _apply_loras(self, loras: list[dict] | None):
+        """Replace the active LoRA set with `loras` (each {"filename", "scale"}).
+
+        An empty/None list leaves the bare checkpoint active. Each LoRA is
+        loaded as a named adapter and all scales are applied together via
+        set_adapters, so every entry's scale takes effect.
         """
-        if self._pipe is None:
-            return {
-                "success": False,
-                "lora_loaded": None,
-                "scale": scale,
-                "message": "No checkpoint loaded. Call load_checkpoint first.",
-            }
-
-        lora_path = LORAS_DIR / filename
-        if not lora_path.exists():
-            return {
-                "success": False,
-                "lora_loaded": None,
-                "scale": scale,
-                "message": f"LoRA not found: {filename}",
-            }
-
-        try:
-
-            self._pipe.load_lora_weights(
-                str(LORAS_DIR),
-                weight_name=filename,
-            )
-
-
-            lora_config = LoRAConfig(filename=filename, scale=scale)
-            self._loaded_loras.append(lora_config)
-
-
-            if len(self._loaded_loras) == 1:
-                self._pipe.fuse_lora(lora_scale=scale)
-
-            return {
-                "success": True,
-                "lora_loaded": filename,
-                "scale": scale,
-                "message": f"Loaded {filename}",
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "lora_loaded": None,
-                "scale": scale,
-                "message": f"Failed to load LoRA: {str(e)}",
-            }
-
-    def unload_loras(self) -> dict:
-        """Unload all LoRAs from the pipeline.
-
-        Returns:
-            Status dict with success, count of unloaded LoRAs, and message
-        """
-        if self._pipe is None:
-            return {
-                "success": True,
-                "unloaded_count": 0,
-                "message": "No pipeline loaded",
-            }
-
-        count = len(self._loaded_loras)
-        if count > 0:
-            try:
-                self._pipe.unfuse_lora()
-                self._pipe.unload_lora_weights()
-            except Exception as e:
-                logger.warning(f"Error unloading LoRAs: {str(e)}")
-                self._loaded_loras = []
-                return {
-                    "success": False,
-                    "unloaded_count": 0,
-                    "message": f"Failed to unload LoRAs: {str(e)}",
-                }
-            self._loaded_loras = []
-
-        return {
-            "success": True,
-            "unloaded_count": count,
-            "message": f"Unloaded {count} LoRA(s)" if count > 0 else "No LoRAs to unload",
-        }
-
-    def _load_pipeline(self):
-        """Lazy-load the Diffusers pipeline (legacy compatibility)."""
-        if self._pipe is not None:
+        self.unload_loras()
+        if not loras:
             return
 
-        self._load_from_huggingface()
-        self._loaded_checkpoint = "default"
+        lora_registry = _discover_loras()
+        names, scales = [], []
+        for i, cfg in enumerate(loras):
+            filename = cfg["filename"]
+            if filename not in lora_registry:
+                raise FileNotFoundError(f"LoRA not found: {filename}")
+            adapter_name = f"lora_{i}"
+            self._pipe.load_lora_weights(str(LORAS_DIR), weight_name=filename, adapter_name=adapter_name)
+            names.append(adapter_name)
+            scales.append(cfg.get("scale", 1.0))
+            self._loaded_loras.append(LoRAConfig(filename=filename, scale=scales[-1]))
+
+        self._pipe.set_adapters(names, adapter_weights=scales)
+
+    def unload_loras(self) -> int:
+        """Unload all LoRAs from the pipeline. Returns the number unloaded."""
+        count = len(self._loaded_loras)
+        if self._pipe is not None and count > 0:
+            try:
+                self._pipe.unload_lora_weights()
+            except Exception as e:
+                logger.warning("Error unloading LoRAs: %s", e)
+        self._loaded_loras = []
+        return count
+
+    # -------------------------------------------------------------- generation
+
+    def _prepare(
+        self,
+        checkpoint: str | None,
+        loras: list[dict] | None,
+        render_type: str | None,
+        seed: int | None,
+    ) -> tuple[torch.Generator, int, str]:
+        """Shared setup for txt2img/img2img: render type, checkpoint, LoRAs, seed."""
+        is_valid, detected_render_type = self._validate_render_type(render_type)
+        if not is_valid:
+            raise ValueError(
+                f"Render type mismatch: specified '{render_type}' but detected '{detected_render_type}'. "
+                f"Aborting render to prevent slow processing. Ensure the required hardware "
+                f"is available or remove the render_type parameter."
+            )
+
+        target_checkpoint = checkpoint or self._loaded_checkpoint or "default"
+        if self._loaded_checkpoint != target_checkpoint or self._pipe is None:
+            result = self.load_checkpoint(target_checkpoint)
+            if not result["success"]:
+                raise RuntimeError(result["message"])
+
+        self._apply_loras(loras)
+
+        if seed is None:
+            seed = random.randint(0, 2**32 - 1)
+        generator = torch.Generator(device=self.device).manual_seed(seed)
+        return generator, seed, detected_render_type
 
     def _get_output_path(self) -> tuple[Path, Path]:
         """Get output paths for image and metadata."""
         date_dir = self.output_dir / datetime.now().strftime("%Y-%m-%d")
         date_dir.mkdir(parents=True, exist_ok=True)
-
-
-        timestamp = datetime.now().strftime("%H%M%S")
-        base_name = f"animagine_{timestamp}"
-
+        base_name = f"anime_{datetime.now().strftime('%H%M%S')}"
 
         counter = 0
         while True:
@@ -393,10 +317,22 @@ class AnimaginePipeline:
             image_path = date_dir / f"{base_name}{suffix}.png"
             meta_path = date_dir / f"{base_name}{suffix}.json"
             if not image_path.exists():
-                break
+                return image_path, meta_path
             counter += 1
 
-        return image_path, meta_path
+    def _save(self, image: Image.Image, metadata: ImageMetadata) -> GenerateImageOutput:
+        """Save image + sidecar metadata JSON and build the output."""
+        image_path, meta_path = self._get_output_path()
+        image.save(image_path)
+        with open(meta_path, "w") as f:
+            json.dump(metadata.model_dump(), f, indent=2)
+
+        return GenerateImageOutput(
+            image_path=str(image_path.absolute()),
+            final_prompt=metadata.prompt,
+            final_negative_prompt=metadata.negative_prompt,
+            metadata=metadata,
+        )
 
     def generate(
         self,
@@ -411,11 +347,11 @@ class AnimaginePipeline:
         seed: int | None = None,
         render_type: str | None = None,
     ) -> GenerateImageOutput:
-        """Generate an image with Animagine XL 4.0.
+        """Generate an image from text.
 
         Args:
             prompt: The positive prompt (should be pre-validated/optimized)
-            negative_prompt: Optional negative prompt (defaults applied if None)
+            negative_prompt: Optional negative prompt (default applied if None)
             checkpoint: Checkpoint filename or 'default' (None uses current/default)
             loras: List of LoRA configs [{"filename": "...", "scale": 1.0}]
             width: Image width (default 832)
@@ -423,49 +359,13 @@ class AnimaginePipeline:
             steps: Inference steps (default 28, use 4-8 with LCM)
             guidance_scale: Classifier-free guidance scale (default 5.0)
             seed: Random seed for reproducibility (random if None)
-            render_type: Optional render type validation ('gpu' or 'cpu'). If specified and doesn't match detected device, raises error.
+            render_type: Optional 'gpu' or 'cpu'; mismatch with detected device raises ValueError
 
         Returns:
             GenerateImageOutput with image path and metadata
-
-        Raises:
-            ValueError: If render_type is specified but doesn't match detected device
         """
-        # Validate render type
-        is_valid, detected_render_type = self._validate_render_type(render_type)
-        if not is_valid:
-            raise ValueError(
-                f"Render type mismatch: specified '{render_type}' but detected '{detected_render_type}'. "
-                f"Aborting render to prevent slow processing. "
-                f"Please ensure your environment has the required hardware (GPU/CPU) or remove the render_type parameter."
-            )
-
-        target_checkpoint = checkpoint or self._loaded_checkpoint or "default"
-        if self._loaded_checkpoint != target_checkpoint or self._pipe is None:
-            result = self.load_checkpoint(target_checkpoint)
-            if not result["success"]:
-                raise RuntimeError(f"Failed to load checkpoint: {result['message']}")
-
-
-        if loras:
-            self.unload_loras()
-            for lora_config in loras:
-                result = self.load_lora(
-                    lora_config["filename"],
-                    lora_config.get("scale", 1.0),
-                )
-                if not result["success"]:
-                    raise RuntimeError(f"Failed to load LoRA: {result['message']}")
-
-
-        final_negative = negative_prompt if negative_prompt else DEFAULT_NEGATIVE_PROMPT
-
-
-        if seed is None:
-            seed = random.randint(0, 2**32 - 1)
-
-        generator = torch.Generator(device=self.device).manual_seed(seed)
-
+        generator, seed, detected_render_type = self._prepare(checkpoint, loras, render_type, seed)
+        final_negative = negative_prompt or DEFAULT_NEGATIVE_PROMPT
 
         result = self._pipe(
             prompt=prompt,
@@ -476,14 +376,6 @@ class AnimaginePipeline:
             guidance_scale=guidance_scale,
             generator=generator,
         )
-
-        image = result.images[0]
-
-
-        image_path, meta_path = self._get_output_path()
-
-
-        lora_configs = self._loaded_loras.copy()
 
         metadata = ImageMetadata(
             prompt=prompt,
@@ -496,33 +388,13 @@ class AnimaginePipeline:
             model_id=MODEL_ID,
             pipeline=CUSTOM_PIPELINE,
             checkpoint=self._loaded_checkpoint or "default",
-            loras=lora_configs,
+            loras=self.loaded_loras,
             render_type=detected_render_type,
         )
-
-
-        image.save(image_path)
-
-
-        with open(meta_path, "w") as f:
-            json.dump(metadata.model_dump(), f, indent=2)
-
-        return GenerateImageOutput(
-            image_path=str(image_path.absolute()),
-            final_prompt=prompt,
-            final_negative_prompt=final_negative,
-            metadata=metadata,
-        )
+        return self._save(result.images[0], metadata)
 
     def _load_source_image(self, image_path: str) -> Image.Image:
-        """Load and prepare source image for img2img.
-
-        Args:
-            image_path: Path to source image
-
-        Returns:
-            PIL Image in RGB mode
-        """
+        """Load source image for img2img as RGB."""
         path = Path(image_path)
         if not path.exists():
             raise FileNotFoundError(f"Source image not found: {image_path}")
@@ -533,12 +405,8 @@ class AnimaginePipeline:
         return image
 
     def _get_img2img_pipeline(self):
-        """Get or create an img2img pipeline from current text2img pipeline."""
+        """Create an img2img pipeline sharing components with the loaded text2img pipeline."""
         from diffusers import StableDiffusionXLImg2ImgPipeline
-
-        if self._pipe is None:
-            raise RuntimeError("No checkpoint loaded. Call load_checkpoint first.")
-
 
         img2img_pipe = StableDiffusionXLImg2ImgPipeline(
             vae=self._pipe.vae,
@@ -565,72 +433,29 @@ class AnimaginePipeline:
         seed: int | None = None,
         render_type: str | None = None,
     ) -> GenerateImageOutput:
-        """Generate an image using img2img (image-to-image) transformation.
+        """Transform an existing image guided by the prompt (img2img).
 
         Args:
             image_path: Path to source image to transform
             prompt: The positive prompt describing desired output
-            negative_prompt: Optional negative prompt (defaults applied if None)
+            negative_prompt: Optional negative prompt (default applied if None)
             strength: Denoising strength (0.0-1.0). Higher = more change from source.
-                     0.0 = no change, 1.0 = completely ignore source image.
-                     Recommended: 0.3-0.5 for refinement, 0.6-0.8 for style transfer
             checkpoint: Checkpoint filename or 'default' (None uses current/default)
             loras: List of LoRA configs [{"filename": "...", "scale": 1.0}]
             steps: Inference steps (default 28, use 4-8 with LCM)
             guidance_scale: Classifier-free guidance scale (default 5.0)
             seed: Random seed for reproducibility (random if None)
-            render_type: Optional render type validation ('gpu' or 'cpu'). If specified and doesn't match detected device, raises error.
+            render_type: Optional 'gpu' or 'cpu'; mismatch with detected device raises ValueError
 
         Returns:
             GenerateImageOutput with image path and metadata
-
-        Raises:
-            ValueError: If render_type is specified but doesn't match detected device
         """
-        # Validate render type
-        is_valid, detected_render_type = self._validate_render_type(render_type)
-        if not is_valid:
-            raise ValueError(
-                f"Render type mismatch: specified '{render_type}' but detected '{detected_render_type}'. "
-                f"Aborting render to prevent slow processing. "
-                f"Please ensure your environment has the required hardware (GPU/CPU) or remove the render_type parameter."
-            )
-
-        target_checkpoint = checkpoint or self._loaded_checkpoint or "default"
-        if self._loaded_checkpoint != target_checkpoint or self._pipe is None:
-            result = self.load_checkpoint(target_checkpoint)
-            if not result["success"]:
-                raise RuntimeError(f"Failed to load checkpoint: {result['message']}")
-
-
-        if loras:
-            self.unload_loras()
-            for lora_config in loras:
-                result = self.load_lora(
-                    lora_config["filename"],
-                    lora_config.get("scale", 1.0),
-                )
-                if not result["success"]:
-                    raise RuntimeError(f"Failed to load LoRA: {result['message']}")
-
-
         source_image = self._load_source_image(image_path)
+        generator, seed, detected_render_type = self._prepare(checkpoint, loras, render_type, seed)
+        final_negative = negative_prompt or DEFAULT_NEGATIVE_PROMPT
         width, height = source_image.size
 
-
-        img2img_pipe = self._get_img2img_pipeline()
-
-
-        final_negative = negative_prompt if negative_prompt else DEFAULT_NEGATIVE_PROMPT
-
-
-        if seed is None:
-            seed = random.randint(0, 2**32 - 1)
-
-        generator = torch.Generator(device=self.device).manual_seed(seed)
-
-
-        result = img2img_pipe(
+        result = self._get_img2img_pipeline()(
             prompt=prompt,
             negative_prompt=final_negative,
             image=source_image,
@@ -639,14 +464,6 @@ class AnimaginePipeline:
             guidance_scale=guidance_scale,
             generator=generator,
         )
-
-        image = result.images[0]
-
-
-        output_image_path, meta_path = self._get_output_path()
-
-
-        lora_configs = self._loaded_loras.copy()
 
         metadata = ImageMetadata(
             prompt=prompt,
@@ -657,36 +474,22 @@ class AnimaginePipeline:
             steps=steps,
             guidance_scale=guidance_scale,
             model_id=MODEL_ID,
-            render_type=detected_render_type,
             pipeline="img2img",
             checkpoint=self._loaded_checkpoint or "default",
-            loras=lora_configs,
+            loras=self.loaded_loras,
+            render_type=detected_render_type,
             source_image=str(Path(image_path).absolute()),
             strength=strength,
         )
+        return self._save(result.images[0], metadata)
 
 
-        image.save(output_image_path)
+_pipeline: ImagePipeline | None = None
 
 
-        with open(meta_path, "w") as f:
-            json.dump(metadata.model_dump(), f, indent=2)
-
-        return GenerateImageOutput(
-            image_path=str(output_image_path.absolute()),
-            final_prompt=prompt,
-            final_negative_prompt=final_negative,
-            metadata=metadata,
-        )
-
-
-
-_pipeline: AnimaginePipeline | None = None
-
-
-def get_pipeline(output_dir: str | Path = "outputs") -> AnimaginePipeline:
+def get_pipeline(output_dir: str | Path = "outputs") -> ImagePipeline:
     """Get or create the global pipeline instance."""
     global _pipeline
     if _pipeline is None:
-        _pipeline = AnimaginePipeline(output_dir=output_dir)
+        _pipeline = ImagePipeline(output_dir=output_dir)
     return _pipeline

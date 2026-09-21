@@ -4,85 +4,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-FastMCP server for Animagine XL 4.0 image generation. Exposes prompt validation/optimization and image generation capabilities via both the MCP protocol (for AI agent integration) and a REST API.
+`anime-diffusion-mcp` — a FastMCP server for anime image generation with Animagine XL 4.0. It exposes prompt validation/optimization and image generation (txt2img and img2img, with custom checkpoints and LoRAs) to AI agents over MCP (stdio). There is no REST API, REPL or Docker setup; the single entry point is the MCP server.
 
 ## Commands
 
-### Setup
 ```bash
 python -m venv .venv
-pip install -e ".[dev]"
-pre-commit install
+pip install -e .
+anime-diffusion-mcp        # run the MCP server (stdio)
 ```
 
-### Running
+Quick import check without loading the model:
+
 ```bash
-animagine-mcp     # MCP server
-animagine-api     # REST API (FastAPI on port 8000, docs at /docs)
-animagine-repl    # Interactive REPL for local testing
+python -c "from anime_diffusion_mcp.server import mcp; print(mcp.name)"
+python -c "from anime_diffusion_mcp.prompt import validate_prompt; print(validate_prompt('1girl, solo, masterpiece').model_dump())"
 ```
 
-### Linting & Formatting
-```bash
-black src/
-ruff check src/
-ruff check --fix src/
-```
-
-### Tests
-```bash
-pytest tests/
-pytest tests/ --cov=src/animagine_mcp
-```
-
-### Docker
-```bash
-docker-compose up -d                              # GPU (default)
-docker-compose -f docker-compose.gpu.yml up -d   # Advanced GPU
-docker-compose -f docker-compose.cpu.yml up -d   # CPU-only
-docker-compose logs -f
-docker-compose exec animagine-mcp bash
-```
+There is no test suite or lint config in the repo.
 
 ## Architecture
 
-The project has three entry points backed by shared internals:
+**`src/anime_diffusion_mcp/server.py`** — the 4 MCP tools: `validate_prompt`, `optimize_prompt`, `list_models`, `generate_image`. `generate_image` dispatches to img2img when `image_path` is given. Tool functions are thin wrappers; logic lives in the modules below.
 
-- **`server.py`** — FastMCP tool definitions (9 tools). This is the MCP interface.
-- **`api.py`** — FastAPI endpoints (11 routes). Same functionality over HTTP.
-- **`repl.py`** — Interactive CLI that wraps the same pipeline for local testing.
+**`prompt/`** — prompt processing pipeline:
+- `tokenizer.py`: splits a prompt string into tags
+- `classifier.py`: `TagCategory` enum + tag dictionaries; categorizes tags (quality, character, series, style, ...)
+- `validator.py`: enforces Animagine rules (quality tags present and last, 8+ tags, character/series consistency, resolution risk)
+- `optimizer.py`: reorders tags into canonical order and fills missing categories
 
-### Core Modules
+**`diffusion/pipeline.py`** — `ImagePipeline`, a singleton via `get_pipeline()`. Handles checkpoint loading (HuggingFace default or local `.safetensors`), LoRA application (named adapters + `set_adapters`, replaced on every call), render-type validation (`gpu`/`cpu` vs `torch.cuda.is_available()`), and saving images with sidecar JSON metadata to `outputs/YYYY-MM-DD/`. Checkpoints are discovered from `checkpoints/`, LoRAs from `loras/` — both relative to the CWD. `_prepare()` is the shared setup for `generate()` and `generate_img2img()`.
 
-**`src/animagine_mcp/prompt/`** — Prompt processing pipeline:
-- `tokenizer.py`: Splits prompt string into tags
-- `classifier.py`: Categorizes tags (quality, character, series, style, etc.)
-- `validator.py`: Enforces Animagine rules RULE-01 through RULE-07
-- `optimizer.py`: Reorders tags into canonical order, fills missing categories
-- `explainer.py`: Generates per-tag explanations
+**`contracts/`** — Pydantic schemas (`schemas.py`) and `ErrorCode` enum (`errors.py`) used by the prompt and diffusion modules.
 
-**`src/animagine_mcp/diffusion/`** — Image generation:
-- `pipeline.py`: `AnimaginePipeline` class — singleton via `get_pipeline()`. Handles checkpoint loading, LoRA application, GPU/CPU rendering, and saves images with JSON metadata to `outputs/`. Dynamically discovers checkpoints from `checkpoints/` and LoRAs from `loras/`.
+## Conventions
 
-**`src/animagine_mcp/contracts/`** — Shared schemas and errors:
-- `schemas.py`: Pydantic models for all tool inputs/outputs
-- `errors.py`: 18 standardized error codes used across both interfaces
-
-### Dual Interface Pattern
-
-Every capability is registered in both `server.py` (MCP) and `api.py` (REST). When adding a new feature, implement the logic in the appropriate `prompt/` or `diffusion/` module, then expose it in both interfaces.
-
-### Render Type Validation
-
-Image generation validates `render_type` (`gpu`/`cpu`) against detected hardware. GPU detection uses `torch.cuda.is_available()`. This is defined in `diffusion/pipeline.py` and enforced in both server and API layers.
-
-### Model & Assets
-
-- Base model: `cagliostrolab/animagine-xl-4.0` (downloaded from HuggingFace on first run)
-- Custom checkpoints: drop `.safetensors` files into `checkpoints/` (auto-discovered)
-- LoRAs: drop into `loras/` (auto-discovered)
-- Generated images: saved to `outputs/` with sidecar `.json` metadata
-
-### AI Agent Specifications
-
-The numbered directories (`02-behavior/`, `03-contracts/`, `04-quality/`, `05-implementation/`) contain machine-readable specs for AI agent consumption — prompt rulebook, taxonomy, error handling contracts, quality guidelines. These inform how the prompt validation rules are implemented.
+- Base model id `cagliostrolab/animagine-xl-4.0` is intentionally kept; "Animagine XL" in docstrings refers to the model, not the project.
+- When adding a capability, implement it in `prompt/` or `diffusion/` and expose it as a tool in `server.py`. Keep the tool count small.
+- `diffusers` imports are lazy (inside methods) so the server starts fast and tools like `list_models` don't load torch models.

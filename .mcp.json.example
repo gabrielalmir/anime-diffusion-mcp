@@ -1,43 +1,10 @@
 {
   "mcpServers": {
-    // Option 1: Local MCP Server (requires 'pip install -e .')
-    "animagine-local": {
-      "command": "animagine-mcp",
+    "anime-diffusion": {
+      "command": "anime-diffusion-mcp",
       "env": {
         "CUDA_VISIBLE_DEVICES": "0"
       }
-    },
-
-    // Option 2: Docker-based MCP Server (requires Docker running)
-    "animagine-docker": {
-      "command": "docker",
-      "args": [
-        "run",
-        "--rm",
-        "--gpus", "all",
-        "-v", "${HOME}/.cache/huggingface:/root/.cache/huggingface",
-        "-v", "${PWD}/checkpoints:/app/checkpoints",
-        "-v", "${PWD}/loras:/app/loras",
-        "-v", "${PWD}/outputs:/app/outputs",
-        "animagine-mcp:latest",
-        "animagine-mcp"
-      ],
-      "env": {
-        "CUDA_VISIBLE_DEVICES": "0",
-        "NVIDIA_VISIBLE_DEVICES": "all"
-      }
-    },
-
-    // Option 3: Docker Compose Service (for long-running instance)
-    // Note: Use 'docker-compose up' to start the service first
-    "animagine-compose": {
-      "command": "animagine-api",
-      "args": ["--host", "0.0.0.0", "--port", "8000"],
-      "env": {
-        "HF_HOME": "/root/.cache/huggingface"
-      },
-      "disabled": true,
-      "description": "Requires: docker-compose up -d && Set BASE_URL in client code"
     }
   }
 }

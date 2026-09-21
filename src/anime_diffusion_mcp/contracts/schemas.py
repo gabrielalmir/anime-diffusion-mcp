@@ -1,8 +1,6 @@
 """Pydantic schemas for MCP tool inputs and outputs."""
 
 from enum import StrEnum
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 
@@ -46,21 +44,6 @@ class OptimizePromptOutput(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="Warnings about the optimization")
 
 
-class TagExplanation(BaseModel):
-    """Explanation of a single tag."""
-
-    tag: str = Field(description="The tag")
-    category: str = Field(description="Tag category")
-    explanation: str = Field(description="What this tag does")
-
-
-class ExplainPromptOutput(BaseModel):
-    """Output from explain_prompt tool."""
-
-    breakdown: list[TagExplanation] = Field(description="Tag-by-tag breakdown")
-    ordered_prompt: str | None = Field(default=None, description="Prompt reordered canonically")
-
-
 class LoRAConfig(BaseModel):
     """Configuration for a single LoRA."""
 
@@ -95,38 +78,3 @@ class GenerateImageOutput(BaseModel):
     final_prompt: str = Field(description="The prompt actually used")
     final_negative_prompt: str = Field(description="The negative prompt actually used")
     metadata: ImageMetadata = Field(description="Generation metadata")
-
-
-class ModelInfo(BaseModel):
-    """Information about a checkpoint or LoRA."""
-
-    name: str = Field(description="Human-readable name")
-    filename: str = Field(description="File to reference in generate calls")
-    size_mb: float = Field(description="Size in megabytes")
-    description: str = Field(description="Brief description")
-
-
-class ListModelsOutput(BaseModel):
-    """Output for list_models tool."""
-
-    checkpoints: list[ModelInfo] = Field(description="Available checkpoints")
-    loras: list[ModelInfo] = Field(description="Available LoRAs")
-    default_checkpoint: str = Field(description="Default checkpoint name")
-    currently_loaded: str | None = Field(description="Currently loaded checkpoint")
-
-
-class LoadCheckpointOutput(BaseModel):
-    """Output for load_checkpoint tool."""
-
-    success: bool
-    checkpoint_loaded: str | None
-    vram_estimate_gb: float
-    message: str
-
-
-class UnloadLorasOutput(BaseModel):
-    """Output for unload_loras tool."""
-
-    success: bool
-    unloaded_count: int
-    message: str

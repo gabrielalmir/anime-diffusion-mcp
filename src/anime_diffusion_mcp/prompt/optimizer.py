@@ -2,7 +2,7 @@
 
 from ..contracts import OptimizePromptOutput
 from .tokenizer import tokenize_prompt, join_tags
-from .classifier import classify_tag, TagCategory, is_quality_tag
+from .classifier import classify_tag, TagCategory
 
 
                                                  

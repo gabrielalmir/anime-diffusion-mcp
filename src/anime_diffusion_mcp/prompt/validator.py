@@ -9,7 +9,6 @@ from .classifier import (
     is_series_tag,
     extract_series_from_character,
     TagCategory,
-    KNOWN_SERIES,
 )
 
 

@@ -1,4 +1,4 @@
-"""Error codes for Animagine MCP."""
+"""Error codes for anime-diffusion-mcp."""
 
 from enum import StrEnum
 
