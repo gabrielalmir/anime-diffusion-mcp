@@ -1,0 +1,28 @@
+# GPU-only. MCP clients should use scripts/mcp-docker.sh (clean stdout).
+services:
+  anime-diffusion:
+    build:
+      context: .
+    image: anime-diffusion-mcp:latest
+    stdin_open: true
+    tty: false
+    gpus: all
+    # Compose does not export $UID; 1000 matches a typical desktop user.
+    # Override with: UID=$(id -u) GID=$(id -g) docker compose run ...
+    user: "${UID:-1000}:${GID:-1000}"
+    working_dir: /app
+    environment:
+      HOME: /tmp
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+      HF_HOME: /cache/huggingface
+      HUGGINGFACE_HUB_CACHE: /cache/huggingface/hub
+      TORCH_HOME: /cache/torch
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./loras:/app/loras
+      - ./outputs:/app/outputs
+      - ./.cache/huggingface:/cache/huggingface
+      - ./.cache/torch:/cache/torch

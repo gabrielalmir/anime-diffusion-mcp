@@ -67,9 +67,10 @@ replit.nix
 # Environment variables
 .env*
 
-# Checkpoints and LoRAs
+# Checkpoints, LoRAs and generated images
 checkpoints/*
 loras/*
+outputs/*
 
 ### Linux ###
 *~

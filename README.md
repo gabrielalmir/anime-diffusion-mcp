@@ -21,24 +21,41 @@ pip install -e .
 
 For CUDA, install the matching PyTorch build first (see https://pytorch.org/get-started/locally/), then `pip install -e .`.
 
+## Docker
+
+GPU only. The image is a slim Python base plus the CUDA 12.4 PyTorch wheel (the wheel already contains the CUDA runtime). It always starts with `--gpus all` and exits if no GPU device is visible (`/dev/nvidia*` on Linux, `/dev/dxg` on Docker Desktop / WSL2) — there is no CPU fallback. The ~7 GB Animagine weights are **not** in the image: the first generation downloads them into `.cache/huggingface/`, which is bind-mounted and reused.
+
+Requires an NVIDIA driver new enough for CUDA 12.4, plus GPU access in Docker (Docker Desktop WSL integration, or the NVIDIA Container Toolkit). An RTX 3060 12 GB is enough for the default 832×1216 render.
+
+```bash
+docker compose build
+# smoke test (imports only; does not load the model)
+docker run --rm --gpus all --user "$(id -u):$(id -g)" --entrypoint python anime-diffusion-mcp:latest \
+  -c "import torch; assert torch.version.cuda and torch.cuda.is_available(); print(torch.version.cuda)"
+```
+
+Point the MCP client at the absolute path of `scripts/mcp-docker.sh` (see `.mcp.json.example`). The script runs `docker run -i --rm --gpus all` — stdin attached, **no TTY** — and bind-mounts `checkpoints/`, `loras/`, `outputs/` and `.cache/`. Do not add `-t`; a TTY corrupts the MCP protocol. `CUDA_VISIBLE_DEVICES` defaults to `0`.
+
+A gated Hugging Face repo needs `HF_TOKEN` in the client env; the script forwards it. Custom checkpoints and LoRAs stay in `checkpoints/` and `loras/` on the host — drop files there, no rebuild.
+
 ## MCP client configuration
 
-Add the server to your MCP client (Claude Desktop, Claude Code, Cursor, ...). See `.mcp.json.example`:
+Add the server to your MCP client (Claude Desktop, Claude Code, Cursor, ...).
+
+Docker (recommended, see `.mcp.json.example`) — use the **absolute** path, clients often ignore the project cwd:
 
 ```json
 {
   "mcpServers": {
     "anime-diffusion": {
-      "command": "anime-diffusion-mcp",
+      "command": "/absolute/path/to/anime-diffusion-mcp/scripts/mcp-docker.sh",
       "env": { "CUDA_VISIBLE_DEVICES": "0" }
     }
   }
 }
 ```
 
-If the client doesn't inherit your virtualenv, point `command` at the venv script, e.g. `C:/path/to/.venv/Scripts/anime-diffusion-mcp.exe`.
-
-The server runs over stdio and uses the **current working directory** for `checkpoints/`, `loras/` and `outputs/`, so launch it from the project folder (or set `cwd` in the client config).
+Without Docker, `command` is `anime-diffusion-mcp` (or the venv script, e.g. `.venv/bin/anime-diffusion-mcp`). The process uses the **current working directory** for `checkpoints/`, `loras/` and `outputs/`, so launch it from the project folder (or set `cwd`).
 
 ## Tools
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`anime-diffusion-mcp` — a FastMCP server for anime image generation with Animagine XL 4.0. It exposes prompt validation/optimization and image generation (txt2img and img2img, with custom checkpoints and LoRAs) to AI agents over MCP (stdio). There is no REST API, REPL or Docker setup; the single entry point is the MCP server.
+`anime-diffusion-mcp` — a FastMCP server for anime image generation with Animagine XL 4.0. It exposes prompt validation/optimization and image generation (txt2img and img2img, with custom checkpoints and LoRAs) to AI agents over MCP (stdio). There is no REST API or REPL. The entry point is the MCP server (stdio), also launched via Docker with `scripts/mcp-docker.sh` (see README).
 
 ## Commands
 

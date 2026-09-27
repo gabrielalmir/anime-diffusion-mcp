@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "anime-diffusion": {
-      "command": "anime-diffusion-mcp",
+      "command": "/absolute/path/to/anime-diffusion-mcp/scripts/mcp-docker.sh",
       "env": {
         "CUDA_VISIBLE_DEVICES": "0"
       }

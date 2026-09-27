@@ -1,0 +1,17 @@
+.git
+.venv
+venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+.cache
+outputs
+checkpoints
+loras
+.mcp.json
+.env
+.env.*
+.claude
+.cursor
+*.md
+!README.md
